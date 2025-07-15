@@ -1,0 +1,23 @@
+# .gitignore
+
+# Node.js
+node_modules/
+.env
+dist/
+build/
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# React
+meddrop-frontend/node_modules/
+meddrop-frontend/.env
+
+# Optional backend ignore
+meddrop-backend/node_modules/
+meddrop-backend/.env
