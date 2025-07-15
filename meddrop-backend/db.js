@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const DB_URI = 'mongodb+srv://rootuser:rootpassword@cluster0.afqjrjx.mongodb.net/meddrop?retryWrites=true&w=majority&appName=Cluster0'
+const DB_URI = process.env.DB_URI;
 
 mongoose.connect(DB_URI, {useNewUrlParser: true, useUnifiedTopology: true})
     .then(() => {
