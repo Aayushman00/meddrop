@@ -1,117 +1,142 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import authApi from '../services/api';
+import { useForm } from '../hooks/useForm';
+import Button from '../components/Button';
+import Input from '../components/Input';
 
 const Signup = () => {
   const navigate = useNavigate();
-
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const strongPasswordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+{}\[\]:;<>,.?~\\/-]).{8,}$/;
+  const validatePassword = (password) => {
+    // At least 8 characters, 1 uppercase, 1 number, 1 special character
+    const strongPasswordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+{}\[\]:;<>,.?~\\/-]).{8,}$/;
+    return strongPasswordRegex.test(password);
+  };
+
+  const formValidation = (values) => {
+    const errors = {};
+    if (!values.name) errors.name = 'Name is required';
+    if (!values.email) errors.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(values.email)) errors.email = 'Email is invalid';
+    if (!values.password) errors.password = 'Password is required';
+    else if (!validatePassword(values.password)) errors.password = 'Password must be at least 8 characters and include an uppercase letter, a number, and a special character';
+    if (!values.confirmPassword) errors.confirmPassword = 'Please confirm your password';
+    else if (values.password !== values.confirmPassword) errors.confirmPassword = 'Passwords do not match';
+    return errors;
+  };
+
+  const {
+    values: { name, email, password, confirmPassword },
+    handleChange,
+    resetForm
+  } = useForm(
+    {
+      name: '',
+      email: '',
+      password: '',
+      confirmPassword: ''
+    },
+    formValidation
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!name || !email || !password || !confirmPassword) {
-        setError('All fields are required.');
-        return;
-    }
-
-    if (password !== confirmPassword) {
-        setError('Passwords do not match.');
-        return;
-    }
-
-    if (!strongPasswordRegex.test(password)) {
-        setError('Password must be at least 8 characters and include an uppercase letter, number, and special character.');
-        return;
+    // Validate form using useForm validation
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      // Set the first error to display in the UI
+      const firstError = Object.values(validationErrors)[0];
+      setError(firstError);
+      return;
     }
 
     try {
-        setLoading(true);
-        setError('');
+      setLoading(true);
+      setError('');
 
-        const response = await axios.post(
-            `${process.env.REACT_APP_API_BASE_URL}/auth/signup`,
-            { name, email, password }
-        );
+      await authApi.register({
+        name,
+        email,
+        password
+      });
 
-        if (response.status === 201 || response.status === 200) {
-            navigate('/login');
-        }
+      navigate('/login');
     } catch (err) {
-        setError(err.response?.data?.message || 'Signup failed.');
+      setError(err.response?.data?.message || err.message || 'Signup failed.');
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex justify-center items-center bg-gray-100">
-        <form
-            onSubmit={handleSubmit}
-            className="bg-white p-8 rounded-lg shadow-md w-full max-w-md"
+    <div className="min-h-screen flex justify-center items-center bg-gray-1000 className="bg-100">
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white p-8 rounded-lg shadow-md w-full max-w-md"
+      >
+        <h2 className="text-2xl font-bold mb-6 text-center">Sign Up</h2>
+
+        {error && <p className="text-red-500 mb-4">{error}</p>}
+
+        <Input
+          type="text"
+          label="Name"
+          placeholder="Enter your name"
+          value={name}
+          onChange={(e) => handleChange(e, 'name')}
+          error={errors.name ? 'Name is required' : ''}
+          required
+        />
+
+        <Input
+          type="email"
+          label="Email"
+          placeholder="Enter your email"
+          value={email}
+          onChange={(e) => handleChange(e, 'email')}
+          error={errors.email ? 'Please enter a valid email' : ''}
+          required
+        />
+
+        <Input
+          type="password"
+          label="Password"
+          placeholder="Create a password"
+          value={password}
+          onChange={(e) => handleChange(e, 'password')}
+          error={errors.password ? 'Password must be at least 8 characters and include an uppercase letter, a number, and a special character' : ''}
+          required
+        />
+
+        <Input
+          type="password"
+          label="Confirm Password"
+          placeholder="Confirm your password"
+          value={confirmPassword}
+          onChange={(e) => handleChange(e, 'confirmPassword')}
+          error={errors.confirmPassword ? 'Please confirm your password' : ''}
+          required
+        />
+
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={loading}
         >
-            <h2 className="text-2xl font-bold mb-6 text-center">Sign Up</h2>
+          {loading ? 'Signing up...' : 'Sign Up'}
+        </Button>
 
-            {error && <p className="text-red-500 mb-4">{error}</p>}
-
-            <input
-                type="text"
-                placeholder="Name"
-                className="w-full p-3 mb-4 border border-gray-300 rounded"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-            />
-
-            <input
-                type="email"
-                placeholder="Email"
-                className="w-full p-3 mb-4 border border-gray-300 rounded"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-            />
-
-            <input
-                type="password"
-                placeholder="Password"
-                className="w-full p-3 mb-4 border border-gray-300 rounded"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-            />
-
-            <input
-                type="password"
-                placeholder="Confirm Password"
-                className="w-full p-3 mb-6 border border-gray-300 rounded"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-
-            <button
-                type="submit"
-                disabled={loading || !name || !email || !password || password !== confirmPassword}
-                className={`w-full p-3 text-white rounded ${
-                    loading || !name || !email || !password || password !== confirmPassword
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-blue-500 hover:bg-blue-600'
-                }`}
-            >
-                {loading ? 'Signing up...' : 'Sign Up'}
-            </button>
-
-            <p className="mt-4 text-center text-sm">
-                Already have an account?{' '}
-                <Link to="/login" className="text-blue-600 hover:underline">
-                    Log in
-                </Link>
-            </p>
-        </form>
+        <p className="mt-4 text-center text-sm">
+          Already have an account?{' '}
+          <Link to="/login" className="text-blue-600 hover:underline">
+            Log in
+          </Link>
+        </p>
+      </form>
     </div>
   );
 };

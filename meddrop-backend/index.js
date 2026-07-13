@@ -4,8 +4,9 @@ const express = require('express');
 const mongoose = require('mongoose');
 const app = express();
 const cors = require('cors');
+const errorHandler = require('./utils/errorHandler');
 
-require('./db'); 
+require('./db');
 
 // cross-orign source sharing
 app.use(cors({ origin: process.env.CORS_ORIGIN, credentials: true }));
@@ -20,6 +21,9 @@ app.use('/api/auth', require('./routes/auth'));
 
 // Mount request routes
 app.use('/api/requests', require('./routes/request'));
+
+// Error handling middleware (should be after all routes)
+app.use(errorHandler);
 
 // Root test route
 app.get('/', (req, res) => {

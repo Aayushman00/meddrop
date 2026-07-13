@@ -1,214 +1,214 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { useApi } from '../hooks/useApi';
 import { useAuth } from '../contexts/authContext';
-import { GoogleMap, Marker, useJsApiLoader, Autocomplete } from '@react-google-maps/api';
+import { useForm } from '../hooks/useForm';
+import Button from '../components/Button';
+import Input from '../components/Input';
+import GoogleMapPicker from '../components/GoogleMapPicker';
 
 const EditMedicine = () => {
-    const { id } = useParams();
-    const navigate = useNavigate();
-    const { token } = useAuth();
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { token } = useAuth();
+  const { loading, error, data: medicineData, run } = useApi();
+  const [medicine, setMedicine] = useState(null);
 
+  useEffect(() => {
+    const fetchMedicine = async () => {
+      await run(() =>
+        fetch(`${process.env.REACT_APP_API_BASE_URL}/medicines`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }).then((res) => {
+          if (!res.ok) {
+            throw new Error('Failed to load medicine');
+          }
+          return res.json();
+        })
+      );
 
-    const { isLoaded } = useJsApiLoader({
-        googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-        libraries: ['places']
-    });
-
-    const defaultCenter = { lat: 12.91285, lng: 74.85603 };
-    const [name, setName] = useState('');
-    const [quantity, setQuantity] = useState('');
-    const [expiryDate, setExpiryDate] = useState('');
-    const [notes, setNotes] = useState('');
-    const [pickupLocation, setPickupLocation] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [submitting, setSubmitting] = useState(false);
-    const [error, setError] = useState('');
-    const [autocomplete, setAutocomplete] = useState(null);
-
-    useEffect(() => {
-        const fetchMedicine = async () => {
-        try {
-            const response = await axios.get(`${process.env.REACT_APP_API_BASE_URL}/medicines`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            const medicine = response.data.medicines.find((m) => m._id === id);
-
-            if (!medicine) {
-                setError('Medicine not found');
-                return;
-            }
-
-            setName(medicine.name);
-            setQuantity(medicine.quantity);
-            setExpiryDate(medicine.expiryDate.slice(0, 10));
-            setNotes(medicine.notes || '');
-
-            setPickupLocation(medicine.location);
-        } catch (err) {
-            setError('Failed to load medicine');
-        } finally {
-            setLoading(false);
+      if (medicineData && medicineData.medicines) {
+        const med = medicineData.medicines.find((m) => m._id === id);
+        if (med) {
+          setMedicine(med);
         }
-        };
-
-        fetchMedicine();
-    }, [id, token]);
-
-    const isFutureDate = (date) => new Date(date) > new Date();
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-
-        if (!name || !quantity || !expiryDate) {
-            setError('All fields are required.');
-            return;
-        }
-
-        if (!isFutureDate(expiryDate)) {
-            setError('Expiry date must be a future date.');
-            return;
-        }
-
-        try {
-            setSubmitting(true);
-            setError('');
-
-            await axios.patch(
-                `${process.env.REACT_APP_API_BASE_URL}/medicines/${id}`,
-                { name, quantity, expiryDate, notes, location: pickupLocation },
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-
-            navigate('/medicines');
-        } catch (err) {
-            setError(err.response?.data?.message || 'Failed to update medicine');
-        } finally {
-            setSubmitting(false);
-        }
+      }
     };
 
-    if (loading) return <p className="text-center mt-10">Loading...</p>;
-    if (error) return <p className="text-red-500 text-center mt-10">{error}</p>;
+    if (token) {
+      fetchMedicine();
+    }
+  }, [token, run, medicineData]);
 
+  const [pickupLocation, setPickupLocation] = useState(null);
 
-    const isFormValid =
-        name.trim() &&
-        quantity &&
-        expiryDate &&
-        pickupLocation &&
-        isFutureDate(expiryDate);
+  const formValidation = (values) => {
+    const errors = {};
+    if (!values.name) errors.name = 'Name is required';
+    if (!values.quantity || values.quantity <= 0) errors.quantity = 'Quantity must be greater than 0';
+    if (!values.expiryDate) errors.expiryDate = 'Expiry date is required';
+    else if (!isFutureDate(values.expiryDate)) errors.expiryDate = 'Expiry date must be a future date';
+    if (!values.pickupLocation) errors.pickupLocation = 'Please select a pickup location';
+    return errors;
+  };
 
-    
-    return (
-        <div className="min-h-screen flex justify-center items-center bg-gray-100">
-            
+  const {
+    values: { name, quantity, expiryDate, notes },
+    handleChange,
+    handleBlur,
+    errors,
+    validate,
+    resetForm
+  } = useForm(
+    {
+      name: '',
+      quantity: '',
+      expiryDate: '',
+      notes: ''
+    },
+    formValidation
+  );
 
-            <form
-                onSubmit={handleSubmit}
-                className="bg-white p-8 rounded-lg shadow-md w-full max-w-md"
-            >
-                <h2 className="text-2xl font-bold mb-6 text-center">Edit Medicine</h2>
+  const isFutureDate = (date) => new Date(date) > new Date();
 
-                {error && <p className="text-red-500 mb-4">{error}</p>}
+  useEffect(() => {
+    if (medicine) {
+      resetForm({
+        name: medicine.name,
+        quantity: medicine.quantity,
+        expiryDate: medicine.expiryDate.slice(0, 10),
+        notes: medicine.notes || ''
+      });
+      setPickupLocation(medicine.location);
+    }
+  }, [medicine, resetForm]);
 
-                <input
-                    type="text"
-                    placeholder="Name"
-                    className="w-full p-3 mb-4 border border-gray-300 rounded"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                />
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-                <input
-                    type="number"
-                    placeholder="Quantity"
-                    className="w-full p-3 mb-4 border border-gray-300 rounded"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    min={1}
-                />
+    const isValid = validate();
+    if (!isValid) return;
 
-                <input
-                    type="date"
-                    placeholder="Expiry Date"
-                    className="w-full p-3 mb-4 border border-gray-300 rounded"
-                    value={expiryDate}
-                    onChange={(e) => setExpiryDate(e.target.value)}
-                />
+    try {
+      await run(() =>
+        fetch(`${process.env.REACT_APP_API_BASE_URL}/medicines/${id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name,
+            quantity,
+            expiryDate,
+            notes,
+            location: pickupLocation
+          })
+        }).then((res) => {
+          if (!res.ok) {
+            throw new Error('Failed to update medicine');
+          }
+          return res.json();
+        })
+      );
 
-                <textarea
-                    placeholder="Notes (optional)"
-                    className="w-full p-3 mb-6 border border-gray-300 rounded"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                />
+      navigate('/medicines');
+    } catch (err) {
+      // Error is handled by useApi hook
+    }
+  };
 
-                <button
-                    type="submit"
-                    disabled={!isFormValid || submitting}
-                    className={`w-full p-3 text-white rounded ${
-                        !isFormValid || submitting
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-green-600 hover:bg-green-700'
-                    }`}
-                >
-                    {submitting ? 'Updating...' : 'Update Medicine'}
-                </button>
+  if (loading) return <p className="text-center mt-10">Loading...</p>;
+  if (error) return <p className="text-red-500 text-center mt-10">{error}</p>;
 
-                <button
-                    type="button"
-                    onClick={() => navigate('/medicines')}
-                    className="mt-4 w-full p-3 text-gray-700 bg-gray-200 rounded hover:bg-gray-300"
-                >
-                Cancel
-                </button>
-            </form>
+  if (!medicine) {
+    return <p className="text-center mt-10">Loading medicine data...</p>;
+  }
 
-            {isLoaded && (
-                <div className="w-full max-w-md bg-white rounded shadow-md p-4">
-                <Autocomplete
-                        onLoad={setAutocomplete}
-                        onPlaceChanged={() => {
-                            if (autocomplete) {
-                                const place = autocomplete.getPlace();
-                                if (place.geometry?.location) {
-                                setPickupLocation({
-                                    lat: place.geometry.location.lat(),
-                                    lng: place.geometry.location.lng()
-                                });
-                                } else {
-                                    setError('Please select a valid location from the suggestions.');
-                                }
-                            }
-                        }}
-                    >
-                    <input
-                        type="text"
-                        placeholder="Search for pickup location"
-                        className="w-full p-3 mb-4 border border-gray-300 rounded"
-                    />
-                    </Autocomplete>
+  return (
+    <div className="min-h-screen flex justify-center items-center bg-gray-100">
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white p-8 rounded-lg shadow-md w-full max-w-md"
+      >
+        <h2 className="text-2xl font-bold mb-6 text-center">Edit Medicine</h2>
 
-                    <GoogleMap
-                        mapContainerStyle={{ width: '100%', height: '300px' }}
-                        center={pickupLocation || defaultCenter}
-                        zoom={15}
-                        onClick={(e) => {
-                            const lat = e.latLng.lat();
-                            const lng = e.latLng.lng();
-                            setPickupLocation({ lat, lng });
-                        }}
-                    >
-                        {pickupLocation && <Marker position={pickupLocation} />}
-                    </GoogleMap>
+        {error && <p className="text-red-500 mb-4">{error}</p>}
 
-                    < p className="text-sm text-gray-600 mt-2">Click the map or search to select pickup location.</p>
-                </div>
-            )}
+        <Input
+          type="text"
+          label="Name"
+          placeholder="Enter medicine name"
+          value={name}
+          onChange={(e) => handleChange('name', e.target.value)}
+          error={errors.name}
+          required
+        />
+
+        <Input
+          type="number"
+          label="Quantity"
+          placeholder="Enter quantity"
+          value={quantity}
+          onChange={(e) => handleChange('quantity', e.target.value)}
+          error={errors.quantity}
+          required
+          min={1}
+        />
+
+        <Input
+          type="date"
+          label="Expiry Date"
+          placeholder="Select expiry date"
+          value={expiryDate}
+          onChange={(e) => handleChange('expiryDate', e.target.value)}
+          error={errors.expiryDate}
+          required
+        />
+
+        <Input
+          type="textarea"
+          label="Notes (optional)"
+          placeholder="Enter any additional notes"
+          value={notes}
+          onChange={(e) => handleChange('notes', e.target.value)}
+        />
+
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Pickup Location
+          </label>
+          <GoogleMapPicker
+            apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}
+            initialLocation={pickupLocation}
+            onLocationChange={setPickupLocation}
+          />
+          {!pickupLocation && (
+            <p className="text-red-500 text-sm mt-2">Please select a pickup location</p>
+          )}
         </div>
-    );
+
+        <div className="flex justify-between">
+          <Button
+            type="submit"
+            variant="success"
+            disabled={loading}
+          >
+            {loading ? 'Updating...' : 'Update Medicine'}
+          </Button>
+
+          <Button
+            variant="secondary"
+            onClick={() => navigate('/medicines')}
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
 };
 
 export default EditMedicine;

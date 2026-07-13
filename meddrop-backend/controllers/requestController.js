@@ -1,182 +1,127 @@
-const Request = require('../model/request');
-const Medicine = require('../model/medicine');
+const RequestService = require('../services/requestService');
+const { validateRequiredFields, isValidObjectId } = require('../utils/validation');
+const { successResponse, errorResponse } = require('../utils/response');
+const asyncHandler = require('../utils/asyncHandler');
 
+/**
+ * Request controller - handles HTTP requests for request operations
+ * Now uses service layer for business logic and utilities for validation/response
+ */
 
-// request medicines
-exports.createRequest = async (req, res) => {
-    try {
-        const { medicineId, quantity } = req.body;
+/**
+ * Create a new medicine request
+ * POST /api/requests
+ */
+exports.createRequest = asyncHandler(async (req, res) => {
+  // Validate required fields
+  const requiredFields = ['medicineId', 'quantity'];
+  const errors = validateRequiredFields(req.body, requiredFields);
 
-        const medicine = await Medicine.findById(medicineId);
-        if (!medicine) {
-            return res.status(404).json({ success: false, message: 'Medicine not found' });
-        }
+  // Validate medicineId format
+  if (req.body.medicineId && !isValidObjectId(req.body.medicineId)) {
+    errors.medicineId = 'Invalid medicine ID';
+  }
 
-        if (medicine.createdBy.toString() === req.user.id) {
-            return res.status(400).json({ success: false, message: 'Cannot request your own medicine' });
-        }
+  // Validate quantity is positive number
+  if (req.body.quantity !== undefined && (isNaN(req.body.quantity) || req.body.quantity <= 0)) {
+    errors.quantity = 'Quantity must be a positive number';
+  }
 
-        if (medicine.quantity < quantity) {
-            return res.status(400).json({ success: false, message: 'Insufficient quantity available' });
-        }
+  if (Object.keys(errors).length > 0) {
+    return errorResponse(res, 'Validation failed', 400, errors);
+  }
 
-        // if already exists logic here ->
-        const existing = await Request.findOne({
-            requestedBy: req.user.id,
-            medicine: medicineId,
-            status: 'pending'
-        });
+  // Create request through service
+  const request = await RequestService.createRequest(req.body, req.user.id);
 
-        if (existing) {
-            return res.status(409).json({ success: false, message: 'You have already made a pending request for this medicine' });
-        }
+  // Return success response
+  return successResponse(res, request, 'Request created successfully', 201);
+});
 
-        const newRequest = new Request({
-            requestedBy: req.user.id,
-            requestedTo: medicine.createdBy,
-            medicine: medicineId,
-            quantity
-        });
+/**
+ * Get requests received by the current user
+ * GET /api/requests/received
+ */
+exports.getReceivedRequests = asyncHandler(async (req, res) => {
+  const requests = await RequestService.getReceivedRequests(req.user.id);
+  return successResponse(res, requests, 'Received requests retrieved successfully');
+});
 
-        await newRequest.save();
+/**
+ * Get requests made by the current user
+ * GET /api/requests/made
+ */
+exports.getMadeRequests = asyncHandler(async (req, res) => {
+  const requests = await RequestService.getMadeRequests(req.user.id);
+  return successResponse(res, requests, 'Made requests retrieved successfully');
+});
 
-        return res.status(201).json({ success: true, request: newRequest });    
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ success: false, message: 'Server error' });
-    }
-};
+/**
+ * Respond to a request (accept or reject)
+ * PATCH /api/requests/:id/respond
+ */
+exports.respondToRequest = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
 
+  // Validate request ID
+  if (!isValidObjectId(id)) {
+    return errorResponse(res, 'Invalid request ID', 400);
+  }
 
-// get requests recieved by the users
-exports.getReceivedRequests = async (req, res) => {
-    try {
-        const request = await Request.find({ requestedTo: req.user.id })
-            .populate('requestedBy', 'name email')
-            .populate('medicine', 'name quantity');
+  // Validate status
+  if (!status || !['accepted', 'rejected'].includes(status)) {
+    return errorResponse(res, 'Invalid status. Must be "accepted" or "rejected"', 400);
+  }
 
-        
-        return res.status(200).json({ success: true, requests: request });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ success: false, message: "Server error" });
-    }
-};
+  // Respond to request through service
+  const request = await RequestService.respondToRequest(id, status, req.user.id);
 
-// get requests made by the user
-exports.getMadeRequests = async (req, res) => {
-    try {
-        const requests = await Request.find({ requestedBy: req.user.id })
-            .populate('requestedTo', 'name email')
-            .populate('medicine', 'name quantity');
+  // Return success response with populated request
+  const populatedRequest = await RequestService.getRequestById(id);
+  return successResponse(res, populatedRequest, `Request ${status} successfully`);
+});
 
+/**
+ * Cancel a request (only by the requester)
+ * DELETE /api/requests/:id
+ */
+exports.cancelRequest = asyncHandler(async (req, res) => {
+  const { id } = req.params;
 
-        return res.status(200).json({ success: true, requests });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ success: false, message: "Server error" });
-    }
-};
+  // Validate request ID
+  if (!isValidObjectId(id)) {
+    return errorResponse(res, 'Invalid request ID', 400);
+  }
 
-// accept or reeject a request
-exports.respondToRequest = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
+  // Cancel request through service
+  const request = await RequestService.cancelRequest(id, req.user.id);
 
-        if(!['accepted', 'rejected'].includes(status)) {
-            return res.status(400).json({ success: false, message: 'Invalid status' });
-        }
+  // Return success response
+  return successResponse(res, request, 'Request cancelled successfully');
+});
 
-        const request = await Request.findById(id);
+/**
+ * Restock medicine (only by medicine owner)
+ * PATCH /api/requests/:id/restock
+ */
+exports.restockMedicine = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { quantity } = req.body;
 
-        if(!request) {
-            return res.status(404).json({ success: false, message: 'Request not found' });
-        }
+  // Validate medicine ID
+  if (!isValidObjectId(id)) {
+    return errorResponse(res, 'Invalid medicine ID', 400);
+  }
 
-        if(request.requestedTo.toString() !== req.user.id) {
-            return res.status(403).json({ success: false, message: 'Not authorized to respond to this request' });
-        }
+  // Validate quantity
+  if (quantity === undefined || isNaN(quantity) || quantity <= 0) {
+    return errorResponse(res, 'Quantity must be a positive number', 400);
+  }
 
-        if(request.status !== 'pending') {
-            return res.status(400).json({ success: false, message: 'Request already processed' });
-        }
+  // Restock medicine through service
+  const medicine = await RequestService.restockMedicine(id, parseInt(quantity), req.user.id);
 
-        if(status === 'accepted') {
-            const medicine = await Medicine.findOneAndUpdate(
-                {
-                    _id: request.medicine,
-                    quantity: { $gte: request.quantity }
-                },
-                {
-                    $inc: { quantity: -request.quantity }
-                },
-                { new: true }
-            );
-            if (!medicine) {
-                return res.status(400).json({ success: false, message: 'Insufficient quantity available' });
-            }
-        }
-
-        request.status = status;
-        await request.save();
-
-        // populating the request with mediccine and user details
-        const populatedRequest = await Request.findById(request._id)
-            .populate('medicine', 'name quantity')
-            .populate('requestedBy', 'name email')
-            .populate('requestedTo', 'name email');
-        return res.status(200).json({ success: true, request });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({success: false, message: "Server error"});
-    }
-};
-
-// cancel a request
-exports.cancelRequest = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const request = await Request.findById(id);
-
-        if (!request) {
-            return res.status(404).json({ success: false, message: 'Request not found' });
-        }
-
-        if (request.requestedBy.toString() !== req.user.id) {
-            return res.status(403).json({ success: false, message: 'Not authorized to cancel this request' });
-        }
-
-        if (request.status !== 'pending') {
-            return res.status(400).json({ success: false, message: 'Only pending requests can be cancelled' });
-        }
-
-        request.status = 'rejected';
-        request.cancelledByUser = true;
-
-        await request.save();
-
-        return res.status(200).json({ success: true, request });
-
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ success: false, message: 'Server error' });
-    }
-};
-
-
-// if a user needs more medicines that they have
-exports.restockMedicine = async (req, res) => {
-    const { id } = req.params;
-    const { quantity } = req.body;
-
-    const medicine = await Medicine.findById(id);
-    if (!medicine || medicine.createdBy.toString() !== req.user.id) {
-        return res.status(403).json({ success: false, message: "Not authorized" });
-    }
-
-    medicine.quantity += quantity;
-    await medicine.save();
-
-    return res.status(200).json({ success: true, medicine });
-};
+  // Return success response
+  return successResponse(res, medicine, 'Medicine restocked successfully');
+});
