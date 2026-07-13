@@ -1,33 +1,36 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import authApi from '../services/api';
-import { useForm } from '../hooks/useForm';
-import Button from '../components/Button';
-import Input from '../components/Input';
+import React, { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import authApi from "../services/api";
+import useForm from "../hooks/useForm";
+import Button from "../components/Button";
+import Input from "../components/Input";
 
 const Login = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const formValidation = (values) => {
     const errors = {};
-    if (!values.email) errors.email = 'Email is required';
-    else if (!/^\S+@\S+\.\S+$/.test(values.email)) errors.email = 'Please enter a valid email address';
-    if (!values.password) errors.password = 'Password is required';
+    if (!values.email) errors.email = "Email is required";
+    else if (!/^\S+@\S+\.\S+$/.test(values.email))
+      errors.email = "Please enter a valid email address";
+    if (!values.password) errors.password = "Password is required";
     return errors;
   };
 
   const {
     values: { email, password },
     handleChange,
-    resetForm
+    resetForm,
+    validate,
+    errors,
   } = useForm(
     {
-      email: '',
-      password: ''
+      email: "",
+      password: "",
     },
-    formValidation
+    formValidation,
   );
 
   const handleSubmit = async (e) => {
@@ -44,22 +47,26 @@ const Login = () => {
 
     try {
       setLoading(true);
-      setError('');
+      setError("");
 
       const response = await authApi.login({
         email,
-        password
+        password,
       });
 
       // Assuming the API returns { token, user }
       const { token, user } = response.data;
       // Store token and user data in localStorage or context
-      localStorage.setItem('authToken', token);
-      localStorage.setItem('authUser', JSON.stringify(user));
+      localStorage.setItem("authToken", token);
+      localStorage.setItem("authUser", JSON.stringify(user));
 
-      navigate('/medicines');
+      navigate("/medicines");
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Invalid email or password.');
+      setError(
+        err.response?.data?.message ||
+          err.message ||
+          "Invalid email or password.",
+      );
     } finally {
       setLoading(false);
     }
@@ -80,8 +87,8 @@ const Login = () => {
           label="Email"
           placeholder="Enter your email"
           value={email}
-          onChange={(e) => handleChange(e, 'email')}
-          error={errors.email ? 'Email is required' : ''}
+          onChange={(e) => handleChange(e, "email")}
+          error={errors.email ? "Email is required" : ""}
           required
         />
 
@@ -90,21 +97,17 @@ const Login = () => {
           label="Password"
           placeholder="Enter your password"
           value={password}
-          onChange={(e) => handleChange(e, 'password')}
-          error={errors.password ? 'Password is required' : ''}
+          onChange={(e) => handleChange(e, "password")}
+          error={errors.password ? "Password is required" : ""}
           required
         />
 
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={loading}
-        >
-          {loading ? 'Logging in...' : 'Login'}
+        <Button type="submit" variant="primary" disabled={loading}>
+          {loading ? "Logging in..." : "Login"}
         </Button>
 
         <p className="mt-4 text-center text-sm">
-          Don't have an account?{' '}
+          Don't have an account?{" "}
           <Link to="/signup" className="text-blue-600 hover:underline">
             Sign Up
           </Link>
